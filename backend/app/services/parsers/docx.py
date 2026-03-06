@@ -1,42 +1,30 @@
-import markdown
-from bs4 import BeautifulSoup
+from docx import Document
 import os
 
 from .base import BaseParser
 
 
-class MarkdownParser(BaseParser):
+class DOCXParser(BaseParser):
 
     def parse(self, file_path: str):
 
-        with open(file_path, "r", encoding="utf-8") as f:
-            md_text = f.read()
-
-        html = markdown.markdown(md_text)
-        soup = BeautifulSoup(html, "html.parser")
+        doc = Document(file_path)
 
         blocks = []
         full_text = []
 
-        for element in soup.find_all(["h1", "h2", "h3", "p", "li", "code"]):
+        for para in doc.paragraphs:
 
-            text = element.get_text(strip=True)
+            text = para.text.strip()
 
             if not text:
                 continue
 
-            if element.name.startswith("h"):
+            style = para.style.name.lower()
+
+            if "heading" in style:
                 block_type = "title"
-                level = int(element.name[1])
-
-            elif element.name == "li":
-                block_type = "list"
-                level = None
-
-            elif element.name == "code":
-                block_type = "code"
-                level = None
-
+                level = 1
             else:
                 block_type = "paragraph"
                 level = None

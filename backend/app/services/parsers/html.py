@@ -1,4 +1,6 @@
 from bs4 import BeautifulSoup
+import os
+
 from .base import BaseParser
 
 
@@ -7,21 +9,45 @@ class HTMLParser(BaseParser):
     def parse(self, file_path: str):
 
         with open(file_path, "r", encoding="utf-8") as f:
-            raw = f.read()
+            html = f.read()
 
-        soup = BeautifulSoup(raw, "lxml")
+        soup = BeautifulSoup(html, "html.parser")
 
-        for tag in soup(["script", "style"]):
-            tag.decompose()
+        blocks = []
+        full_text = []
 
-        text = soup.get_text(separator="\n")
+        for element in soup.find_all(["h1", "h2", "h3", "p", "li"]):
+
+            text = element.get_text(strip=True)
+
+            if not text:
+                continue
+
+            if element.name.startswith("h"):
+                level = int(element.name[1])
+                block_type = "title"
+            elif element.name == "li":
+                block_type = "list"
+                level = None
+            else:
+                block_type = "paragraph"
+                level = None
+
+            blocks.append({
+                "type": block_type,
+                "content": text,
+                "metadata": {
+                    "level": level
+                }
+            })
+
+            full_text.append(text)
 
         return {
-            "text": text,
-            "pages": [
-                {
-                    "page": 1,
-                    "content": text
-                }
-            ]
+            "doc_id": os.path.basename(file_path),
+            "text": "\n".join(full_text),
+            "blocks": blocks,
+            "metadata": {
+                "source": file_path
+            }
         }

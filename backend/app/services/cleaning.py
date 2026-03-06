@@ -1,123 +1,131 @@
 import re
 import unicodedata
-from typing import Dict, List
+from collections import Counter
+from typing import Dict, List, Set
+
 
 class TextCleaner:
     """
-    输入: parser 输出结构
-    输出: 清洗后的相同结构
+    通用多语言文本清洗器，支持中文、英文、法语。
     """
 
-    def __init__(self):
-        # 中文字符
+    def __init__(self, min_length: int = 5, symbol_threshold: float = 0.5):
+        # 基础配置
+        self.min_length = min_length #太短删掉
+        self.symbol_threshold = symbol_threshold#符号占比太多删掉
+        
+        # 正则：匹配中文字符
         self.cjk_re = re.compile(r'[\u4e00-\u9fa5]')
+        # 正则：典型的目录/页码点
+        self.toc_pattern = re.compile(r"\.{3,}\s*\d+$")
+        # 正则：西文重复空格
+        self.multi_space_re = re.compile(r'[ ]{2,}')
 
-        # 中文句末标点
-        self.cn_punc = ("。", "！", "？", "”", "；", "）", "：", "》")
-
-        # 英文句末标点
-        self.en_punc = (".", "!", "?", "\"", ";", ")", ":")
-
-    # ========= 基础工具 =========
-
-    def _is_chinese(self, char: str) -> bool:
-        return bool(self.cjk_re.search(char))
+    # ------------------------------------------------
+    # 核心处理模块
+    # ------------------------------------------------
 
     def normalize_unicode(self, text: str) -> str:
+        """规范化 Unicode"""
         text = unicodedata.normalize("NFKC", text)
-        return "".join(c for c in text if c.isprintable() or c in "\n\r\t")
+        return "".join(c for c in text if c.isprintable() or c in "\n\t")
 
-    def remove_extra_blank_lines(self, text: str) -> str:
-        return re.sub(r"\n\s*\n\s*\n+", "\n\n", text).strip()
+    def clean_spacing(self, text: str) -> str:
+        """
+        混合语言空格清理。
+        """
+        # 1. 基础处理：统一将多个空格合并为一个
+        text = self.multi_space_re.sub(' ', text)
+        # 2. 如果包含中文，应用中西文混合排版逻辑
+        if self.cjk_re.search(text):
+            # 移除汉字之间的空格
+            text = re.sub(r'([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])', r'\1\2', text)
+            # 在汉字与英数之间加空格
+            text = re.sub(r'([\u4e00-\u9fa5])([a-zA-Z0-9])', r'\1 \2', text)
+            text = re.sub(r'([a-zA-Z0-9])([\u4e00-\u9fa5])', r'\1 \2', text)
 
-    # ========= 中英混排修复 =========
+        # 3. 英语法语标点基础修正
+        # 此处不强制法语的特殊标点空格（如 : 前的空格），以保持文本原意。
+        text = re.sub(r'\s+([,.!?;])', r'\1', text) 
 
-    def clean_mixed_spacing(self, text: str) -> str:
-        # 1. 去除汉字之间的空格
-        text = re.sub(r'([\u4e00-\u9fa5])\s+([\u4e00-\u9fa5])', r'\1\2', text)
+        return text.strip()
 
-        # 2. 汉字与英文/数字之间加空格
-        text = re.sub(r'([\u4e00-\u9fa5])([a-zA-Z0-9])', r'\1 \2', text)
-        text = re.sub(r'([a-zA-Z0-9])([\u4e00-\u9fa5])', r'\1 \2', text)
 
-        # 3. 处理英文断词连字符
-        text = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', text)
+    # 过滤与噪声检测
+  
 
-        return text
+    def is_noise(self, text: str) -> bool:
+        """
+        检测噪声块。
+        法语支持：\w 在 Unicode 模式下会自动包含 é, à, ç 等字符。
+        """
+        s = text.strip()
+        if len(s) < self.min_length:
+            return True
+        if s.isdigit():
+            return True
 
-    # ========= 智能断行合并 =========
+        # 符号占比检测
+        symbols = re.findall(r'[^\w\s]', s, re.UNICODE)
+        if len(s) > 0 and len(symbols) / len(s) > self.symbol_threshold:
+            return True
+            
+        return False
 
-    def smart_merge_lines(self, text: str) -> str:
-        lines = text.split("\n")
-        merged = []
-        buffer = ""
 
-        for line in lines:
-            stripped = line.strip()
+    # 重复模式识别 
 
-            if not stripped:
-                if buffer:
-                    merged.append(buffer)
-                    buffer = ""
+
+    def get_repeated_patterns(self, blocks: List[Dict]) -> Set[str]:
+        """识别高频出现的模式，屏蔽数字干扰。"""
+        pattern_counter = Counter()
+        text_to_pattern = []
+
+        for block in blocks:
+            content = block["content"].strip()
+            if not content: continue
+            
+            # 将数字屏蔽，法语中常见的 "Page 1", "Page 2" 会被统一识别
+            pattern = re.sub(r'\d+', '[NUM]', content)
+            pattern_counter[pattern] += 1
+            text_to_pattern.append((content, pattern))
+
+        threshold = max(3, len(blocks) // 20)
+        repeated_pats = {p for p, c in pattern_counter.items() if c > threshold}
+        return {content for content, pat in text_to_pattern if pat in repeated_pats}
+
+
+    # 执行清理
+
+    def clean_blocks(self, blocks: List[Dict]) -> List[Dict]:
+        intermediate = []
+        seen = set()
+
+        for block in blocks:
+            b = block.copy()
+            # 顺序：标准化 -> 空格清理 -> 基础过滤
+            txt = self.normalize_unicode(b["content"])
+            txt = self.clean_spacing(txt)
+
+            if not txt or self.is_noise(txt) or self.toc_pattern.search(txt):
                 continue
 
-            if buffer:
-                if not buffer.endswith(self.cn_punc + self.en_punc):
+            if txt in seen:
+                continue
+            
+            seen.add(txt)
+            b["content"] = txt
+            intermediate.append(b)
 
-                    # 中文直接拼接
-                    if self._is_chinese(buffer[-1]) or self._is_chinese(stripped[0]):
-                        buffer += stripped
-                    else:
-                        buffer += " " + stripped
-                else:
-                    merged.append(buffer)
-                    buffer = stripped
-            else:
-                buffer = stripped
-
-        if buffer:
-            merged.append(buffer)
-
-        return "\n\n".join(merged)
-
-    # ========= 单页清洗 =========
-
-    def clean_page(self, text: str) -> str:
-        text = self.normalize_unicode(text)
-        text = self.smart_merge_lines(text)
-        text = self.clean_mixed_spacing(text)
-        text = self.remove_extra_blank_lines(text)
-        return text
-
-    # ========= 文档级入口 =========
+        # 移除高频重复的页眉页脚
+        repeated = self.get_repeated_patterns(intermediate)
+        return [b for b in intermediate if b["content"] not in repeated]
 
     def clean_document(self, parsed_doc: Dict) -> Dict:
-        """
-        输入结构:
-        {
-            "text": str,
-            "pages": [
-                {"page": int, "content": str}
-            ]
-        }
-
-        输出结构相同
-        """
-
-        cleaned_pages = []
-        full_text = []
-
-        for page in parsed_doc["pages"]:
-            cleaned_text = self.clean_page(page["content"])
-
-            cleaned_pages.append({
-                "page": page["page"],
-                "content": cleaned_text
-            })
-
-            full_text.append(cleaned_text)
-
+        cleaned = self.clean_blocks(parsed_doc.get("blocks", []))
         return {
-            "text": "\n\n".join(full_text),
-            "pages": cleaned_pages
+            "doc_id": parsed_doc.get("doc_id"),
+            "text": "\n\n".join(b["content"] for b in cleaned),
+            "blocks": cleaned,
+            "metadata": parsed_doc.get("metadata", {}).copy()
         }
