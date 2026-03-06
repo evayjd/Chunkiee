@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List
 
-from app.services.embedding import embed_query
+from backend.app.services.embedding.embedding_model import embed_query
 from app.services.retrieval import retrieve_chunks
 from app.services.rag import generate_answer
 

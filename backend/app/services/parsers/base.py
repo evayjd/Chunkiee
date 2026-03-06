@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Dict
 
 
 class BaseParser(ABC):
@@ -12,8 +12,11 @@ class BaseParser(ABC):
         """
         返回统一结构:
         {
+            "doc_id": str,
             "text": str,
-            "pages": List[dict]
+            "blocks": List[dict],
+            "metadata": dict
         }
         """
+        
         pass
