@@ -1,0 +1,3 @@
+VECTOR_K = 20  
+FINAL_K = 4 
+

@@ -200,14 +200,57 @@ class TextChunker:
 
         all_chunks = []
 
-        for page in cleaned_doc["pages"]:
+        # case 1: already has pages
+        if cleaned_doc.get("pages"):
+            pages = cleaned_doc["pages"]
 
+        # case 2: has blocks, rebuild pages from blocks
+        elif cleaned_doc.get("blocks"):
+            page_map = {}
+
+            for block in cleaned_doc["blocks"]:
+                page_num = block.get("page", 1)
+                content = block.get("content", "").strip()
+
+                if not content:
+                    continue
+
+                page_map.setdefault(page_num, [])
+                page_map[page_num].append(content)
+
+            pages = [
+                {
+                    "page": page_num,
+                    "content": "\n\n".join(contents)
+                }
+                for page_num, contents in sorted(page_map.items())
+            ]
+
+        # case 3: fallback to full text as one page
+        else:
+            pages = [
+                {
+                    "page": 1,
+                    "content": cleaned_doc.get("text", "")
+                }
+            ]
+
+        for page in pages:
             page_chunks = self.chunk_page(
                 page_text=page["content"],
                 doc_id=doc_id,
                 page_number=page["page"]
             )
-
             all_chunks.extend(page_chunks)
 
         return all_chunks
+
+    def chunk(
+        self,
+        cleaned_doc: Dict,
+        doc_id: str
+    ) -> List[Dict]:
+        return self.chunk_document(
+            cleaned_doc=cleaned_doc,
+            doc_id=doc_id
+        )

@@ -1,8 +1,8 @@
 import uuid
 from typing import Dict, List
 
-from app.services.parsers.factory import get_parser
-from app.services.ingestion.cleaning import clean_text
+from app.services.parsers.factory import ParserFactory
+from app.services.ingestion.cleaning import TextCleaner
 from app.services.ingestion.chunking import TextChunker
 
 from app.services.embedding.embedding_service import embed_documents
@@ -11,16 +11,18 @@ from app.services.retrieval.vector_store import VectorStore
 
 class IngestionPipeline:
     """
-    文档入库 pipeline
+    Document ingestion pipeline
+
+    Steps:
     parse -> clean -> chunk -> embed -> store
     """
 
     def __init__(self):
 
-        # 文本切块器
+        # text chunker
         self.chunker = TextChunker()
 
-        # 向量数据库接口
+        # vector database interface
         self.vector_store = VectorStore()
 
     def process_document(
@@ -29,47 +31,63 @@ class IngestionPipeline:
         doc_id: str
     ) -> Dict:
         """
-        处理一个文档并写入数据库
+        Process a document and store chunks + embeddings
         """
-        # 选择 parser
 
-        parser = get_parser(file_path)
+        # -------- 1. Parse document --------
+        parser = ParserFactory.get_parser(file_path)
 
         parsed = parser.parse(file_path)
 
-        raw_text = parsed["text"]
+        # -------- 2. Clean text --------
+        cleaner = TextCleaner()
 
+        cleaned_doc = cleaner.clean_document(parsed)
 
-        # 文本清洗
+        # -------- 3. Chunk document --------
+        chunks = self.chunker.chunk(cleaned_doc, doc_id)
 
-        cleaned_text = clean_text(raw_text)
+        if not chunks:
+            return {
+                "doc_id": doc_id,
+                "chunks_created": 0
+            }
 
-        # 文本切块
-        chunks = self.chunker.chunk(cleaned_text)
-
-        # 提取 chunk 文本
+        # -------- 4. Extract chunk texts --------
         chunk_texts = [c["text"] for c in chunks]
 
-        # 调用 embedding_service
+        # -------- 5. Generate embeddings --------
         embeddings = embed_documents(chunk_texts)
 
+        if len(embeddings) != len(chunks):
+            raise ValueError(
+                "Embedding count does not match chunk count"
+            )
 
-        # 构建数据库对象
+        # -------- 6. Prepare DB objects --------
         db_chunks: List[Dict] = []
 
         for i, chunk in enumerate(chunks):
 
             db_chunks.append({
-                "id": str(uuid.uuid4()),
+                # 使用 chunker 生成的 id
+                "id": chunk["chunk_id"],
+
                 "doc_id": doc_id,
-                "chunk_index": i,
+
+                "chunk_index": chunk["chunk_index"],
+
                 "text": chunk["text"],
-                "meta": chunk.get("meta", {}),
+
+                "meta": {
+                    "page": chunk.get("page"),
+                    "section": chunk.get("section")
+                },
+
                 "embedding": embeddings[i]
             })
 
-
-        # 写入数据库
+        # -------- 7. Store into vector DB --------
         self.vector_store.add_chunks(db_chunks)
 
         return {

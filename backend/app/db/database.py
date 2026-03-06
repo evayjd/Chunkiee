@@ -7,7 +7,7 @@ from sqlalchemy.orm import declarative_base
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://chunkie:dyjdyj123@localhost:5432/ragdb"
+    "postgresql://chunkie:dyjdyj123@127.0.0.1:5433/ragdb"
 )
 
 

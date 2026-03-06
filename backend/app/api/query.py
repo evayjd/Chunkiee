@@ -1,51 +1,52 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List
+from fastapi import APIRouter
 
-from backend.app.services.embedding.embedding_model import embed_query
-from app.services.retrieval import retrieve_chunks
-from app.services.rag import generate_answer
+from app.models.request_models import QueryRequest
+from app.models.response_models import QueryResponse, Citation
 
-
-router = APIRouter(prefix="/query", tags=["query"])
-
+from app.services.retrieval.retrieval import Retriever
+from app.services.rag.context_builder import build_context
+from app.services.rag.prompt_builder import build_prompt
+from app.services.rag.generator import generate_answer
 
 
-class QueryRequest(BaseModel):
-    question: str
-    top_k: int = 5
+router = APIRouter()
+
+retriever = Retriever()
 
 
-
-class SourceChunk(BaseModel):
-    chunk_id: str
-    doc_id: str
-    content: str
-    score: float
-
-
-class QueryResponse(BaseModel):
-    answer: str
-    sources: List[SourceChunk]
-
-
-#Route
-@router.post("/", response_model=QueryResponse)
-def query(request: QueryRequest):
-
-    if not request.question.strip():
-        raise HTTPException(status_code=400, detail="Empty question")
-
-    # embedding
-    query_vector = embed_query(request.question)
+@router.post(
+    "/query",
+    response_model=QueryResponse
+)
+def query_rag(req: QueryRequest):
 
     # retrieval
-    chunks = retrieve_chunks(query_vector, top_k=request.top_k)
+    chunks = retriever.retrieve(
+        query=req.query,
+        doc_id=req.doc_id
+    )
 
-    # RAG generation
-    answer = generate_answer(request.question, chunks)
+    # build context
+    context_data = build_context(chunks)
+
+    # build prompt
+    prompt = build_prompt(
+        question=req.query,
+        context_data=context_data
+    )
+
+    # generate answer
+    result = generate_answer(
+        prompt=prompt,
+        context_data=context_data
+    )
+
+    citations = [
+        Citation(**c)
+        for c in result["citations"]
+    ]
 
     return QueryResponse(
-        answer=answer,
-        sources=chunks
+        answer=result["answer"],
+        citations=citations
     )
