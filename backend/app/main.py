@@ -7,6 +7,7 @@ from app.api.upload import router as upload_router
 from app.api.doc import router as doc_router
 from app.api.chunk import router as chunk_router
 from app.api.query import router as query_router
+from app.api.roast import router as roast_router
 
 from app.db.database import engine
 from app.db.models import Base
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(doc_router, prefix="/api", tags=["documents"])
     app.include_router(chunk_router, prefix="/api", tags=["chunks"])
     app.include_router(query_router, prefix="/api", tags=["query"])
+    app.include_router(roast_router,prefix="/api",tags=["roast"])
 
     return app
 
