@@ -3,23 +3,12 @@ from typing import Dict
 
 
 class Generator:
-    """
-    负责调用 Ollama LLM 生成最终回答
-    """
-
     def __init__(
         self,
-        model: str = "qwen2.5:3b",
+        model: str = "llama3.1:8b",
         url: str = "http://localhost:11434/api/generate",
         timeout: int = 60
     ):
-        """
-        初始化生成器
-
-        model: 使用的 Ollama 模型
-        url: Ollama API 地址
-        timeout: 请求超时时间
-        """
 
         self.model = model
         self.url = url
@@ -96,7 +85,7 @@ User:
         except Exception as e:
 
             # 打印错误，方便 debug
-            print("LLM generation error:", str(e))
+            print("LLM ERROR:", e)
 
             answer = "Error: failed to generate answer."
 

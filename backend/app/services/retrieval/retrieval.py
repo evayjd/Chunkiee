@@ -45,6 +45,15 @@ class Retriever:
                 top_k=VECTOR_K,
                 doc_id=doc_id
             )
+            # ===== DEBUG START =====
+            print("query:", rq)
+            print("retrieved:", len(candidates))
+
+            if candidates:
+                print("top similarity:", candidates[0]["similarity"])
+                print("top chunk:", candidates[0]["text"][:200])
+# ===== DEBUG END =====
+            
 
             # 关键：把数据库返回的 embedding 统一转成 float list
             normalized_candidates = [

@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional
-
+from datetime import datetime
 
 class Citation(BaseModel):
 
@@ -29,7 +29,7 @@ class DocumentResponse(BaseModel):
     id: str
     title: str
     source_type: str
-    created_at: Optional[str]
+    created_at: datetime
 
 
 class ChunkResponse(BaseModel):
